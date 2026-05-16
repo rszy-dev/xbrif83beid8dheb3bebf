@@ -21,41 +21,58 @@ export const Route = createFileRoute("/")({
   }),
 });
 
+const BOTTLE = 4;
+const MAX_PER_TEAM = 6;
+
 type Player = { name: string; bottleSips: number; emptied: number };
 type Team = { name: string; players: [Player, Player] };
+type PlayerRef = { team: 0 | 1; player: 0 | 1 };
 type Round = {
-  // sips each player of each team had to drink this round
   drinks: [[number, number], [number, number]];
-  // mutter hit against opponent (team index that GOT HIT)
   mutterAgainst: [boolean, boolean];
-  totals: [number, number]; // schluck totals scored per team (incl. mutter)
+  totals: [number, number];
 };
 type State = {
   teams: [Team, Team];
-  bottleSize: number;
   rounds: Round[];
-  starter: 0 | 1; // who starts next round
+  starter: PlayerRef;
   setupDone: boolean;
 };
 
-const STORAGE_KEY = "leberschuss.de.v1";
+const STORAGE_KEY = "leberschuss.de.v2";
 
-const freshPlayer = (name: string, bottleSize: number): Player => ({
+const freshPlayer = (name: string): Player => ({
   name,
-  bottleSips: bottleSize,
+  bottleSips: BOTTLE,
   emptied: 0,
 });
 
 const initialState = (): State => ({
   teams: [
-    { name: "Team 1", players: [freshPlayer("Spieler 1", 20), freshPlayer("Spieler 2", 20)] },
-    { name: "Team 2", players: [freshPlayer("Spieler 3", 20), freshPlayer("Spieler 4", 20)] },
+    { name: "Team 1", players: [freshPlayer("Spieler 1"), freshPlayer("Spieler 2")] },
+    { name: "Team 2", players: [freshPlayer("Spieler 3"), freshPlayer("Spieler 4")] },
   ],
-  bottleSize: 20,
   rounds: [],
-  starter: 0,
+  starter: { team: 0, player: 0 },
   setupDone: false,
 });
+
+// Turn order: starter → diagonal opponent → starter's teammate → remaining opponent
+// Diagonal mapping: T1P1 ↔ T2P2, T1P2 ↔ T2P1
+const diagonal = (p: PlayerRef): PlayerRef => ({
+  team: (p.team === 0 ? 1 : 0) as 0 | 1,
+  player: (p.player === 0 ? 1 : 0) as 0 | 1,
+});
+const teammate = (p: PlayerRef): PlayerRef => ({
+  team: p.team,
+  player: (p.player === 0 ? 1 : 0) as 0 | 1,
+});
+const turnOrder = (starter: PlayerRef): PlayerRef[] => {
+  const diag = diagonal(starter);
+  const mate = teammate(starter);
+  const last = diagonal(mate);
+  return [starter, diag, mate, last];
+};
 
 function Index() {
   const [state, setState] = useState<State>(initialState);
@@ -76,6 +93,20 @@ function Index() {
   return <Game state={state} setState={setState} />;
 }
 
+function Header() {
+  return (
+    <header className="border-b border-border bg-card/60 backdrop-blur">
+      <div className="mx-auto max-w-3xl px-4 py-6 flex items-end justify-between gap-4">
+        <div>
+          <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Punktezähler</p>
+          <h1 className="text-3xl md:text-4xl font-semibold mt-1">Leberschuss</h1>
+        </div>
+        <Beer className="h-9 w-9 text-accent shrink-0" />
+      </div>
+    </header>
+  );
+}
+
 function Setup({
   state,
   setState,
@@ -83,7 +114,7 @@ function Setup({
   state: State;
   setState: React.Dispatch<React.SetStateAction<State>>;
 }) {
-  const update = (ti: 0 | 1, pi: 0 | 1, name: string) =>
+  const updatePlayer = (ti: 0 | 1, pi: 0 | 1, name: string) =>
     setState((s) => {
       const teams = s.teams.map((t, i) =>
         i === ti
@@ -102,6 +133,9 @@ function Setup({
       return { ...s, teams };
     });
 
+  const setStarter = (ref: PlayerRef) =>
+    setState((s) => ({ ...s, starter: ref }));
+
   const start = () =>
     setState((s) => ({
       ...s,
@@ -109,7 +143,7 @@ function Setup({
       rounds: [],
       teams: s.teams.map((t) => ({
         ...t,
-        players: t.players.map((p) => ({ ...p, bottleSips: s.bottleSize, emptied: 0 })) as [
+        players: t.players.map((p) => ({ ...p, bottleSips: BOTTLE, emptied: 0 })) as [
           Player,
           Player,
         ],
@@ -124,22 +158,8 @@ function Setup({
           <div>
             <h2 className="text-xl font-semibold">Spielvorbereitung</h2>
             <p className="text-sm text-muted-foreground mt-1">
-              Zwei Teams mit jeweils zwei Spielern. Gib die Namen ein und lege die Flaschengröße fest.
+              Zwei Teams mit je zwei Spielern. Jede Flasche hat {BOTTLE} Schlücke.
             </p>
-          </div>
-
-          <div>
-            <Label htmlFor="bottle">Schlücke pro Flasche</Label>
-            <Input
-              id="bottle"
-              type="number"
-              min={1}
-              value={state.bottleSize}
-              onChange={(e) =>
-                setState((s) => ({ ...s, bottleSize: Math.max(1, parseInt(e.target.value) || 1) }))
-              }
-              className="mt-1 w-32"
-            />
           </div>
 
           {([0, 1] as const).map((ti) => (
@@ -158,7 +178,7 @@ function Setup({
                     <Label>Spieler {pi + 1}</Label>
                     <Input
                       value={state.teams[ti].players[pi].name}
-                      onChange={(e) => update(ti, pi, e.target.value)}
+                      onChange={(e) => updatePlayer(ti, pi, e.target.value)}
                       className="mt-1"
                     />
                   </div>
@@ -166,6 +186,38 @@ function Setup({
               </div>
             </div>
           ))}
+
+          <div>
+            <Label className="mb-2 block">Wer fängt an?</Label>
+            <div className="grid grid-cols-2 gap-2">
+              {([0, 1] as const).flatMap((ti) =>
+                ([0, 1] as const).map((pi) => {
+                  const sel =
+                    state.starter.team === ti && state.starter.player === pi;
+                  return (
+                    <button
+                      key={`${ti}-${pi}`}
+                      type="button"
+                      onClick={() => setStarter({ team: ti, player: pi })}
+                      className={
+                        "rounded-md border px-3 py-2 text-left text-sm transition-colors " +
+                        (sel
+                          ? "border-primary bg-primary/10 text-foreground"
+                          : "border-border hover:bg-accent/30")
+                      }
+                    >
+                      <span className="block text-xs text-muted-foreground">
+                        {state.teams[ti].name}
+                      </span>
+                      <span className="font-medium">
+                        {state.teams[ti].players[pi].name}
+                      </span>
+                    </button>
+                  );
+                }),
+              )}
+            </div>
+          </div>
 
           <Button onClick={start} size="lg" className="w-full">
             Spiel starten
@@ -176,20 +228,6 @@ function Setup({
   );
 }
 
-function Header() {
-  return (
-    <header className="border-b border-border bg-card/60 backdrop-blur">
-      <div className="mx-auto max-w-3xl px-4 py-6 flex items-end justify-between gap-4">
-        <div>
-          <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Punktezähler</p>
-          <h1 className="text-3xl md:text-4xl font-semibold mt-1">Leberschuss</h1>
-        </div>
-        <Beer className="h-9 w-9 text-accent shrink-0" />
-      </div>
-    </header>
-  );
-}
-
 function Game({
   state,
   setState,
@@ -197,29 +235,31 @@ function Game({
   state: State;
   setState: React.Dispatch<React.SetStateAction<State>>;
 }) {
-  // form for next round
   const [sipsA, setSipsA] = useState("");
   const [sipsB, setSipsB] = useState("");
-  const [mutterA, setMutterA] = useState(false); // team A hit mutter on team B
+  const [mutterA, setMutterA] = useState(false); // Team A traf Mutter → Team B verliert beide Flaschen
   const [mutterB, setMutterB] = useState(false);
-  const [splitA1, setSplitA1] = useState(""); // how many sips player A1 drinks (only when A is hit / drinks B's sips? -> drinks come from opponent's Wertung)
-  const [splitB1, setSplitB1] = useState("");
+  const [split1, setSplit1] = useState(""); // Wer trinkt (Spieler 1 des trinkenden Teams)
 
-  // In Leberschuss: a team's earned sips go to the OPPONENT to drink.
-  // The opponent team distributes those sips between its two players.
-  // sipsA = Wertung Team A schnippst -> Team B trinkt. splitB1 = wie viele davon Spieler B1.
-  const totalForB = (parseInt(sipsA) || 0);
-  const totalForA = (parseInt(sipsB) || 0);
+  const a = clamp(parseInt(sipsA) || 0, 0, MAX_PER_TEAM);
+  const b = clamp(parseInt(sipsB) || 0, 0, MAX_PER_TEAM);
+  const net = Math.abs(a - b);
+  // Höhere Wertung trinkt das Netto (laut deinen Regeln)
+  const drinkingTeam: 0 | 1 | null = a === b ? null : a > b ? 0 : 1;
+
+  const order = useMemo(() => turnOrder(state.starter), [state.starter]);
 
   const winner = useMemo(() => {
-    const aDone = state.teams[0].players.every((p) => p.bottleSips <= 0 && p.emptied >= 1);
-    const bDone = state.teams[1].players.every((p) => p.bottleSips <= 0 && p.emptied >= 1);
+    const done = (ti: 0 | 1) =>
+      state.teams[ti].players.every((p) => p.bottleSips <= 0 && p.emptied >= 1);
+    const aDone = done(0);
+    const bDone = done(1);
     if (aDone && bDone) {
       const last = state.rounds[state.rounds.length - 1];
       if (!last) return null;
       if (last.totals[0] > last.totals[1]) return 0;
       if (last.totals[1] > last.totals[0]) return 1;
-      return null; // tie -> next round decides
+      return null;
     }
     if (aDone) return 0;
     if (bDone) return 1;
@@ -227,34 +267,28 @@ function Game({
   }, [state]);
 
   const applyRound = () => {
-    const a = parseInt(sipsA) || 0;
-    const b = parseInt(sipsB) || 0;
-
-    // distribute
-    const b1 = Math.min(Math.max(parseInt(splitB1) || 0, 0), totalForB);
-    const b2 = totalForB - b1;
-    const a1 = Math.min(Math.max(parseInt(splitA1) || 0, 0), totalForA);
-    const a2 = totalForA - a1;
+    const p1 = drinkingTeam === null ? 0 : clamp(parseInt(split1) || 0, 0, net);
+    const p2 = drinkingTeam === null ? 0 : net - p1;
 
     setState((s) => {
       const teams = s.teams.map((t, ti) => {
-        const drinks = ti === 0 ? [a1, a2] : [b1, b2];
-        const mutterHit = ti === 0 ? mutterB : mutterA; // this team got hit on mutter
+        const drinks: [number, number] =
+          drinkingTeam === ti ? [p1, p2] : [0, 0];
+        const mutterHit = ti === 0 ? mutterB : mutterA;
         let players = t.players.map((p, pi) => {
           let sips = p.bottleSips - drinks[pi];
           let emptied = p.emptied;
           if (sips <= 0) {
-            emptied += 1;
+            if (p.bottleSips > 0) emptied += 1;
             sips = 0;
           }
           return { ...p, bottleSips: sips, emptied };
         }) as [Player, Player];
         if (mutterHit) {
-          // opponent hit Mutter -> beide Flaschen werden ausgetrunken & ersetzt
           players = players.map((p) => ({
             ...p,
             emptied: p.emptied + (p.bottleSips > 0 ? 1 : 0),
-            bottleSips: s.bottleSize,
+            bottleSips: BOTTLE,
           })) as [Player, Player];
         }
         return { ...t, players };
@@ -262,27 +296,30 @@ function Game({
 
       const round: Round = {
         drinks: [
-          [a1, a2],
-          [b1, b2],
+          drinkingTeam === 0 ? [p1, p2] : [0, 0],
+          drinkingTeam === 1 ? [p1, p2] : [0, 0],
         ],
         mutterAgainst: [mutterB, mutterA],
         totals: [a, b],
       };
 
-      return {
-        ...s,
-        teams,
-        rounds: [...s.rounds, round],
-        starter: (s.starter === 0 ? 1 : 0) as 0 | 1,
+      // Starter nächste Runde: gleiches Team beginnt abwechselnd, intern Spielerwechsel
+      const nextStarterTeam = (s.starter.team === 0 ? 1 : 0) as 0 | 1;
+      // intern Spielerwechsel innerhalb dieses (gegnerischen) Teams: nimm den anderen Spieler des letzten Starters dieses Teams
+      // Heuristik: tausche einfach Player-Index ebenfalls
+      const nextStarter: PlayerRef = {
+        team: nextStarterTeam,
+        player: (s.starter.player === 0 ? 1 : 0) as 0 | 1,
       };
+
+      return { ...s, teams, rounds: [...s.rounds, round], starter: nextStarter };
     });
 
     setSipsA("");
     setSipsB("");
     setMutterA(false);
     setMutterB(false);
-    setSplitA1("");
-    setSplitB1("");
+    setSplit1("");
   };
 
   const undo = () => {
@@ -292,34 +329,31 @@ function Game({
       const teams = s.teams.map((t, ti) => {
         const drinks = last.drinks[ti];
         const mutterHit = last.mutterAgainst[ti];
-        let players = t.players.map((p, pi) => ({ ...p })) as [Player, Player];
+        let players = t.players.map((p) => ({ ...p })) as [Player, Player];
         if (mutterHit) {
-          // can't perfectly reverse mutter; just refund bottle to previous? approximate: revert bottle to size - drink, undo emptied bump
           players = players.map((p, pi) => ({
             ...p,
-            bottleSips: Math.max(0, s.bottleSize - drinks[pi]),
+            bottleSips: Math.max(0, BOTTLE - drinks[pi]),
             emptied: Math.max(0, p.emptied - 1),
           })) as [Player, Player];
         } else {
           players = players.map((p, pi) => {
             let sips = p.bottleSips + drinks[pi];
             let emptied = p.emptied;
-            if (sips > s.bottleSize) {
-              // bottle was replaced this round; reduce emptied
+            if (sips > BOTTLE) {
               emptied = Math.max(0, emptied - 1);
-              sips = sips - s.bottleSize;
+              sips = sips - BOTTLE;
             }
             return { ...p, bottleSips: sips, emptied };
           }) as [Player, Player];
         }
         return { ...t, players };
       }) as [Team, Team];
-      return {
-        ...s,
-        teams,
-        rounds: s.rounds.slice(0, -1),
-        starter: (s.starter === 0 ? 1 : 0) as 0 | 1,
+      const prevStarter: PlayerRef = {
+        team: (s.starter.team === 0 ? 1 : 0) as 0 | 1,
+        player: (s.starter.player === 0 ? 1 : 0) as 0 | 1,
       };
+      return { ...s, teams, rounds: s.rounds.slice(0, -1), starter: prevStarter };
     });
   };
 
@@ -330,12 +364,11 @@ function Game({
       rounds: [],
       teams: s.teams.map((t) => ({
         ...t,
-        players: t.players.map((p) => ({ ...p, bottleSips: s.bottleSize, emptied: 0 })) as [
+        players: t.players.map((p) => ({ ...p, bottleSips: BOTTLE, emptied: 0 })) as [
           Player,
           Player,
         ],
       })) as [Team, Team],
-      starter: 0,
     }));
   };
 
@@ -343,6 +376,8 @@ function Game({
     if (!confirm("Alles zurücksetzen (auch Teams)?")) return;
     setState({ ...initialState(), setupDone: false });
   };
+
+  const drinkingTeamObj = drinkingTeam !== null ? state.teams[drinkingTeam] : null;
 
   return (
     <div className="min-h-screen">
@@ -362,22 +397,32 @@ function Game({
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {state.teams.map((t, ti) => (
-            <TeamCard
-              key={ti}
-              team={t}
-              isStarter={state.starter === ti}
-              bottleSize={state.bottleSize}
-            />
+            <TeamCard key={ti} team={t} isStarterTeam={state.starter.team === ti} />
           ))}
         </div>
 
+        <Card className="p-5 space-y-3">
+          <h2 className="text-lg font-semibold">Schnipps-Reihenfolge</h2>
+          <ol className="space-y-1 text-sm">
+            {order.map((ref, i) => {
+              const p = state.teams[ref.team].players[ref.player];
+              return (
+                <li key={i} className="flex items-center gap-2">
+                  <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-secondary text-xs font-medium">
+                    {i + 1}
+                  </span>
+                  <span className="font-medium">{p.name}</span>
+                  <span className="text-muted-foreground text-xs">
+                    ({state.teams[ref.team].name})
+                  </span>
+                </li>
+              );
+            })}
+          </ol>
+        </Card>
+
         <Card className="p-5 space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold">Neue Runde</h2>
-            <p className="text-sm text-muted-foreground">
-              Beginnt: <span className="font-medium text-foreground">{state.teams[state.starter].name}</span>
-            </p>
-          </div>
+          <h2 className="text-lg font-semibold">Neue Runde</h2>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {([0, 1] as const).map((ti) => {
@@ -389,10 +434,11 @@ function Game({
                 <div key={ti} className="rounded-lg border border-border p-4 space-y-3">
                   <p className="font-medium">{state.teams[ti].name} hat erschnippst</p>
                   <div>
-                    <Label>Schlücke (aus gelben Feldern)</Label>
+                    <Label>Schlücke (max {MAX_PER_TEAM})</Label>
                     <Input
                       type="number"
                       min={0}
+                      max={MAX_PER_TEAM}
                       inputMode="numeric"
                       value={sips}
                       onChange={(e) => setSips(e.target.value)}
@@ -401,10 +447,7 @@ function Game({
                     />
                   </div>
                   <label className="flex items-center gap-2 text-sm cursor-pointer">
-                    <Checkbox
-                      checked={mutter}
-                      onCheckedChange={(v) => setMutter(Boolean(v))}
-                    />
+                    <Checkbox checked={mutter} onCheckedChange={(v) => setMutter(Boolean(v))} />
                     Mutter getroffen (Gegner bekommt neue Flaschen)
                   </label>
                 </div>
@@ -412,23 +455,42 @@ function Game({
             })}
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <SplitInput
-              label={`${state.teams[1].name} trinkt insgesamt ${totalForB}. Aufteilung:`}
-              p1Name={state.teams[1].players[0].name}
-              p2Name={state.teams[1].players[1].name}
-              total={totalForB}
-              p1Value={splitB1}
-              setP1Value={setSplitB1}
-            />
-            <SplitInput
-              label={`${state.teams[0].name} trinkt insgesamt ${totalForA}. Aufteilung:`}
-              p1Name={state.teams[0].players[0].name}
-              p2Name={state.teams[0].players[1].name}
-              total={totalForA}
-              p1Value={splitA1}
-              setP1Value={setSplitA1}
-            />
+          <div className="rounded-lg border border-border p-4 space-y-3 bg-secondary/30">
+            {drinkingTeamObj === null ? (
+              <p className="text-sm text-muted-foreground">
+                Gleichstand ({a} : {b}) – niemand trinkt diese Runde.
+              </p>
+            ) : (
+              <>
+                <p className="text-sm">
+                  <span className="font-semibold">{drinkingTeamObj.name}</span> trinkt{" "}
+                  <span className="font-display text-xl text-primary">{net}</span>{" "}
+                  Schlücke ({a} − {b} netto). Aufteilung:
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <Label className="text-xs">{drinkingTeamObj.players[0].name}</Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      max={net}
+                      value={split1}
+                      onChange={(e) => setSplit1(e.target.value)}
+                      className="mt-1"
+                      placeholder="0"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">{drinkingTeamObj.players[1].name}</Label>
+                    <Input
+                      value={Math.max(0, net - (clamp(parseInt(split1) || 0, 0, net)))}
+                      readOnly
+                      className="mt-1 bg-muted"
+                    />
+                  </div>
+                </div>
+              </>
+            )}
           </div>
 
           <div className="flex flex-wrap gap-2 justify-end pt-2">
@@ -452,7 +514,10 @@ function Game({
             <h2 className="text-lg font-semibold mb-3">Rundenverlauf</h2>
             <div className="space-y-1 text-sm">
               {state.rounds.map((r, i) => (
-                <div key={i} className="flex flex-wrap gap-x-4 gap-y-1 border-b border-border/60 pb-2">
+                <div
+                  key={i}
+                  className="flex flex-wrap gap-x-4 gap-y-1 border-b border-border/60 pb-2"
+                >
                   <span className="text-muted-foreground w-12">#{i + 1}</span>
                   <span>
                     {state.teams[0].name}: <b>{r.totals[0]}</b>
@@ -472,79 +537,30 @@ function Game({
   );
 }
 
-function SplitInput({
-  label,
-  p1Name,
-  p2Name,
-  total,
-  p1Value,
-  setP1Value,
-}: {
-  label: string;
-  p1Name: string;
-  p2Name: string;
-  total: number;
-  p1Value: string;
-  setP1Value: (v: string) => void;
-}) {
-  const p1 = Math.min(Math.max(parseInt(p1Value) || 0, 0), total);
-  const p2 = total - p1;
-  return (
-    <div className="rounded-lg border border-border p-4 space-y-2">
-      <p className="text-sm text-muted-foreground">{label}</p>
-      <div className="grid grid-cols-2 gap-2">
-        <div>
-          <Label className="text-xs">{p1Name}</Label>
-          <Input
-            type="number"
-            min={0}
-            max={total}
-            value={p1Value}
-            onChange={(e) => setP1Value(e.target.value)}
-            className="mt-1"
-            placeholder="0"
-            disabled={total === 0}
-          />
-        </div>
-        <div>
-          <Label className="text-xs">{p2Name}</Label>
-          <Input value={p2} readOnly className="mt-1 bg-muted" />
-        </div>
-      </div>
-    </div>
-  );
+function clamp(n: number, lo: number, hi: number) {
+  return Math.max(lo, Math.min(hi, n));
 }
 
-function TeamCard({
-  team,
-  isStarter,
-  bottleSize,
-}: {
-  team: Team;
-  isStarter: boolean;
-  bottleSize: number;
-}) {
+function TeamCard({ team, isStarterTeam }: { team: Team; isStarterTeam: boolean }) {
   return (
-    <Card className={"p-5 " + (isStarter ? "border-primary" : "")}>
+    <Card className={"p-5 " + (isStarterTeam ? "border-primary" : "")}>
       <div className="flex items-center justify-between mb-3">
         <h3 className="font-semibold text-lg">{team.name}</h3>
-        {isStarter && (
+        {isStarterTeam && (
           <span className="text-xs uppercase tracking-wider text-primary">Startet</span>
         )}
       </div>
       <div className="space-y-3">
         {team.players.map((p, i) => {
-          const pct = Math.max(0, Math.min(100, (p.bottleSips / bottleSize) * 100));
+          const pct = Math.max(0, Math.min(100, (p.bottleSips / BOTTLE) * 100));
           const empty = p.bottleSips <= 0;
           return (
             <div key={i}>
               <div className="flex justify-between text-sm mb-1">
                 <span className="font-medium">{p.name}</span>
                 <span className={empty ? "text-destructive" : "text-muted-foreground"}>
-                  {p.bottleSips}/{bottleSize} {empty && "· LEER"}
-                  {p.emptied > 0 && (
-                    <span className="ml-2 text-accent">🍺 ×{p.emptied}</span>
-                  )}
+                  {p.bottleSips}/{BOTTLE} {empty && "· LEER"}
+                  {p.emptied > 0 && <span className="ml-2 text-accent">🍺 ×{p.emptied}</span>}
                 </span>
               </div>
               <div className="h-2 rounded-full bg-muted overflow-hidden">
