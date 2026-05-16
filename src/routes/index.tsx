@@ -278,14 +278,16 @@ function Game({
     return null;
   }, [state]);
 
+  const anyMutter = mutterA || mutterB;
   const applyRound = () => {
-    const p1 = drinkingTeam === null ? 0 : clamp(parseInt(split1) || 0, 0, net);
-    const p2 = drinkingTeam === null ? 0 : net - p1;
+    // Wenn Mutter getroffen wurde: keine Schlücke verteilt – getroffene Teams exen + neue Flaschen.
+    const p1 = anyMutter || drinkingTeam === null ? 0 : clamp(parseInt(split1) || 0, 0, net);
+    const p2 = anyMutter || drinkingTeam === null ? 0 : net - p1;
 
     setState((s) => {
       const teams = s.teams.map((t, ti) => {
         const drinks: [number, number] =
-          drinkingTeam === ti ? [p1, p2] : [0, 0];
+          !anyMutter && drinkingTeam === ti ? [p1, p2] : [0, 0];
         const mutterHit = ti === 0 ? mutterB : mutterA;
         let players = t.players.map((p, pi) => {
           let sips = p.bottleSips - drinks[pi];
@@ -297,9 +299,10 @@ function Game({
           return { ...p, bottleSips: sips, emptied };
         }) as [Player, Player];
         if (mutterHit) {
+          // exen + neue Flasche
           players = players.map((p) => ({
             ...p,
-            emptied: p.emptied + (p.bottleSips > 0 ? 1 : 0),
+            emptied: p.emptied + 1,
             bottleSips: BOTTLE,
           })) as [Player, Player];
         }
@@ -308,8 +311,8 @@ function Game({
 
       const round: Round = {
         drinks: [
-          drinkingTeam === 0 ? [p1, p2] : [0, 0],
-          drinkingTeam === 1 ? [p1, p2] : [0, 0],
+          !anyMutter && drinkingTeam === 0 ? [p1, p2] : [0, 0],
+          !anyMutter && drinkingTeam === 1 ? [p1, p2] : [0, 0],
         ],
         mutterAgainst: [mutterB, mutterA],
         totals: [a, b],
