@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
-import { Checkbox } from "@/components/ui/checkbox";
+
 import { Beer, RotateCcw, Trash2, Trophy, Undo2 } from "lucide-react";
 
 export const Route = createFileRoute("/")({
@@ -235,19 +235,31 @@ function Game({
   state: State;
   setState: React.Dispatch<React.SetStateAction<State>>;
 }) {
-  const [sipsA, setSipsA] = useState("");
-  const [sipsB, setSipsB] = useState("");
-  const [mutterA, setMutterA] = useState(false); // Team A traf Mutter → Team B verliert beide Flaschen
-  const [mutterB, setMutterB] = useState(false);
-  const [split1, setSplit1] = useState(""); // Wer trinkt (Spieler 1 des trinkenden Teams)
-
-  const a = clamp(parseInt(sipsA) || 0, 0, MAX_PER_TEAM);
-  const b = clamp(parseInt(sipsB) || 0, 0, MAX_PER_TEAM);
-  const net = Math.abs(a - b);
-  // Höhere Wertung trinkt das Netto (laut deinen Regeln)
-  const drinkingTeam: 0 | 1 | null = a === b ? null : a > b ? 0 : 1;
+  // Pro-Spieler-Ergebnis: "0" | "1" | "2" | "3" | "M" (Mutter)
+  type Shot = "0" | "1" | "2" | "3" | "M";
+  const [shots, setShots] = useState<Record<string, Shot>>({});
+  const [split1, setSplit1] = useState("");
 
   const order = useMemo(() => turnOrder(state.starter), [state.starter]);
+  const keyOf = (r: PlayerRef) => `${r.team}-${r.player}`;
+
+  const teamSips = (ti: 0 | 1) => {
+    let total = 0;
+    for (const pi of [0, 1] as const) {
+      const v = shots[`${ti}-${pi}`];
+      if (v && v !== "M") total += parseInt(v);
+    }
+    return total;
+  };
+  const teamMutter = (ti: 0 | 1) =>
+    (["0", "1"] as const).some((pi) => shots[`${ti}-${pi}`] === "M");
+
+  const a = teamSips(0);
+  const b = teamSips(1);
+  const mutterA = teamMutter(0); // Team A traf Mutter → Team B verliert Flaschen
+  const mutterB = teamMutter(1);
+  const net = Math.abs(a - b);
+  const drinkingTeam: 0 | 1 | null = a === b ? null : a > b ? 0 : 1;
 
   const winner = useMemo(() => {
     const done = (ti: 0 | 1) =>
@@ -315,10 +327,7 @@ function Game({
       return { ...s, teams, rounds: [...s.rounds, round], starter: nextStarter };
     });
 
-    setSipsA("");
-    setSipsB("");
-    setMutterA(false);
-    setMutterB(false);
+    setShots({});
     setSplit1("");
   };
 
@@ -424,35 +433,66 @@ function Game({
         <Card className="p-5 space-y-4">
           <h2 className="text-lg font-semibold">Neue Runde</h2>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {([0, 1] as const).map((ti) => {
-              const sips = ti === 0 ? sipsA : sipsB;
-              const setSips = ti === 0 ? setSipsA : setSipsB;
-              const mutter = ti === 0 ? mutterA : mutterB;
-              const setMutter = ti === 0 ? setMutterA : setMutterB;
+          <div className="space-y-3">
+            {order.map((ref, i) => {
+              const player = state.teams[ref.team].players[ref.player];
+              const teamName = state.teams[ref.team].name;
+              const k = keyOf(ref);
+              const current = shots[k];
+              const options: Shot[] = ["0", "1", "2", "3", "M"];
               return (
-                <div key={ti} className="rounded-lg border border-border p-4 space-y-3">
-                  <p className="font-medium">{state.teams[ti].name} hat erschnippst</p>
-                  <div>
-                    <Label>Schlücke (max {MAX_PER_TEAM})</Label>
-                    <Input
-                      type="number"
-                      min={0}
-                      max={MAX_PER_TEAM}
-                      inputMode="numeric"
-                      value={sips}
-                      onChange={(e) => setSips(e.target.value)}
-                      className="mt-1"
-                      placeholder="0"
-                    />
+                <div
+                  key={k}
+                  className="rounded-lg border border-border p-3 space-y-2"
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-secondary text-xs font-medium shrink-0">
+                      {i + 1}
+                    </span>
+                    <span className="font-medium">{player.name}</span>
+                    <span className="text-xs text-muted-foreground">
+                      ({teamName}) hat geschnippst:
+                    </span>
                   </div>
-                  <label className="flex items-center gap-2 text-sm cursor-pointer">
-                    <Checkbox checked={mutter} onCheckedChange={(v) => setMutter(Boolean(v))} />
-                    Mutter getroffen (Gegner bekommt neue Flaschen)
-                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    {options.map((opt) => {
+                      const sel = current === opt;
+                      const isMutter = opt === "M";
+                      return (
+                        <button
+                          key={opt}
+                          type="button"
+                          onClick={() =>
+                            setShots((s) => ({ ...s, [k]: opt }))
+                          }
+                          className={
+                            "h-10 min-w-12 px-3 rounded-md border text-sm font-medium transition-colors " +
+                            (sel
+                              ? isMutter
+                                ? "border-primary bg-primary text-primary-foreground"
+                                : "border-primary bg-primary/10"
+                              : "border-border hover:bg-accent/30")
+                          }
+                        >
+                          {isMutter ? "Mutter" : opt}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               );
             })}
+          </div>
+
+          <div className="flex justify-between text-sm px-1">
+            <span>
+              <b>{state.teams[0].name}:</b> {a} Schlücke
+              {mutterA && <span className="ml-1 text-primary">+ Mutter</span>}
+            </span>
+            <span>
+              <b>{state.teams[1].name}:</b> {b} Schlücke
+              {mutterB && <span className="ml-1 text-primary">+ Mutter</span>}
+            </span>
           </div>
 
           <div className="rounded-lg border border-border p-4 space-y-3 bg-secondary/30">
