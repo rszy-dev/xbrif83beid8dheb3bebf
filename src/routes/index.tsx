@@ -433,35 +433,66 @@ function Game({
         <Card className="p-5 space-y-4">
           <h2 className="text-lg font-semibold">Neue Runde</h2>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {([0, 1] as const).map((ti) => {
-              const sips = ti === 0 ? sipsA : sipsB;
-              const setSips = ti === 0 ? setSipsA : setSipsB;
-              const mutter = ti === 0 ? mutterA : mutterB;
-              const setMutter = ti === 0 ? setMutterA : setMutterB;
+          <div className="space-y-3">
+            {order.map((ref, i) => {
+              const player = state.teams[ref.team].players[ref.player];
+              const teamName = state.teams[ref.team].name;
+              const k = keyOf(ref);
+              const current = shots[k];
+              const options: Shot[] = ["0", "1", "2", "3", "M"];
               return (
-                <div key={ti} className="rounded-lg border border-border p-4 space-y-3">
-                  <p className="font-medium">{state.teams[ti].name} hat erschnippst</p>
-                  <div>
-                    <Label>Schlücke (max {MAX_PER_TEAM})</Label>
-                    <Input
-                      type="number"
-                      min={0}
-                      max={MAX_PER_TEAM}
-                      inputMode="numeric"
-                      value={sips}
-                      onChange={(e) => setSips(e.target.value)}
-                      className="mt-1"
-                      placeholder="0"
-                    />
+                <div
+                  key={k}
+                  className="rounded-lg border border-border p-3 space-y-2"
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-secondary text-xs font-medium shrink-0">
+                      {i + 1}
+                    </span>
+                    <span className="font-medium">{player.name}</span>
+                    <span className="text-xs text-muted-foreground">
+                      ({teamName}) hat geschnippst:
+                    </span>
                   </div>
-                  <label className="flex items-center gap-2 text-sm cursor-pointer">
-                    <Checkbox checked={mutter} onCheckedChange={(v) => setMutter(Boolean(v))} />
-                    Mutter getroffen (Gegner bekommt neue Flaschen)
-                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    {options.map((opt) => {
+                      const sel = current === opt;
+                      const isMutter = opt === "M";
+                      return (
+                        <button
+                          key={opt}
+                          type="button"
+                          onClick={() =>
+                            setShots((s) => ({ ...s, [k]: opt }))
+                          }
+                          className={
+                            "h-10 min-w-12 px-3 rounded-md border text-sm font-medium transition-colors " +
+                            (sel
+                              ? isMutter
+                                ? "border-primary bg-primary text-primary-foreground"
+                                : "border-primary bg-primary/10"
+                              : "border-border hover:bg-accent/30")
+                          }
+                        >
+                          {isMutter ? "Mutter" : opt}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               );
             })}
+          </div>
+
+          <div className="flex justify-between text-sm px-1">
+            <span>
+              <b>{state.teams[0].name}:</b> {a} Schlücke
+              {mutterA && <span className="ml-1 text-primary">+ Mutter</span>}
+            </span>
+            <span>
+              <b>{state.teams[1].name}:</b> {b} Schlücke
+              {mutterB && <span className="ml-1 text-primary">+ Mutter</span>}
+            </span>
           </div>
 
           <div className="rounded-lg border border-border p-4 space-y-3 bg-secondary/30">
