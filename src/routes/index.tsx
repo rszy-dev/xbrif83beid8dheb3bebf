@@ -327,12 +327,8 @@ function Game({
       return { ...s, teams, rounds: [...s.rounds, round], starter: nextStarter };
     });
 
-    setSipsA("");
-    setSipsB("");
-    setMutterA(false);
-    setMutterB(false);
+    setShots({});
     setSplit1("");
-  };
 
   const undo = () => {
     if (state.rounds.length === 0) return;
