@@ -329,6 +329,7 @@ function Game({
 
     setShots({});
     setSplit1("");
+  };
 
   const undo = () => {
     if (state.rounds.length === 0) return;
