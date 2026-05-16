@@ -499,7 +499,24 @@ function Game({
           </div>
 
           <div className="rounded-lg border border-border p-4 space-y-3 bg-secondary/30">
-            {drinkingTeamObj === null ? (
+            {anyMutter ? (
+              <div className="text-sm space-y-1">
+                <p className="font-semibold text-primary">Mutter getroffen!</p>
+                {mutterA && (
+                  <p>
+                    {state.teams[1].name} ext beide Flaschen und stellt neue (je {BOTTLE} Schlücke) hin.
+                  </p>
+                )}
+                {mutterB && (
+                  <p>
+                    {state.teams[0].name} ext beide Flaschen und stellt neue (je {BOTTLE} Schlücke) hin.
+                  </p>
+                )}
+                <p className="text-muted-foreground">
+                  Normale Schlücke werden in dieser Runde nicht gewertet.
+                </p>
+              </div>
+            ) : drinkingTeamObj === null ? (
               <p className="text-sm text-muted-foreground">
                 Gleichstand ({a} : {b}) – niemand trinkt diese Runde.
               </p>
