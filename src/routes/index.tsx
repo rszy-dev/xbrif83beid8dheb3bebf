@@ -235,19 +235,31 @@ function Game({
   state: State;
   setState: React.Dispatch<React.SetStateAction<State>>;
 }) {
-  const [sipsA, setSipsA] = useState("");
-  const [sipsB, setSipsB] = useState("");
-  const [mutterA, setMutterA] = useState(false); // Team A traf Mutter → Team B verliert beide Flaschen
-  const [mutterB, setMutterB] = useState(false);
-  const [split1, setSplit1] = useState(""); // Wer trinkt (Spieler 1 des trinkenden Teams)
-
-  const a = clamp(parseInt(sipsA) || 0, 0, MAX_PER_TEAM);
-  const b = clamp(parseInt(sipsB) || 0, 0, MAX_PER_TEAM);
-  const net = Math.abs(a - b);
-  // Höhere Wertung trinkt das Netto (laut deinen Regeln)
-  const drinkingTeam: 0 | 1 | null = a === b ? null : a > b ? 0 : 1;
+  // Pro-Spieler-Ergebnis: "0" | "1" | "2" | "3" | "M" (Mutter)
+  type Shot = "0" | "1" | "2" | "3" | "M";
+  const [shots, setShots] = useState<Record<string, Shot>>({});
+  const [split1, setSplit1] = useState("");
 
   const order = useMemo(() => turnOrder(state.starter), [state.starter]);
+  const keyOf = (r: PlayerRef) => `${r.team}-${r.player}`;
+
+  const teamSips = (ti: 0 | 1) => {
+    let total = 0;
+    for (const pi of [0, 1] as const) {
+      const v = shots[`${ti}-${pi}`];
+      if (v && v !== "M") total += parseInt(v);
+    }
+    return total;
+  };
+  const teamMutter = (ti: 0 | 1) =>
+    (["0", "1"] as const).some((pi) => shots[`${ti}-${pi}`] === "M");
+
+  const a = teamSips(0);
+  const b = teamSips(1);
+  const mutterA = teamMutter(0); // Team A traf Mutter → Team B verliert Flaschen
+  const mutterB = teamMutter(1);
+  const net = Math.abs(a - b);
+  const drinkingTeam: 0 | 1 | null = a === b ? null : a > b ? 0 : 1;
 
   const winner = useMemo(() => {
     const done = (ti: 0 | 1) =>
