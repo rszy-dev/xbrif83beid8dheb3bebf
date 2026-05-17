@@ -522,12 +522,12 @@ function Summary({ state, setState }: { state: State; setState: React.Dispatch<R
   const shots = state.pendingShots;
 
   const teamSum = (ti: 0 | 1) =>
-    ([0, 1] as const).reduce((n, pi) => {
+    ([0, 1] as const).reduce<number>((n, pi) => {
       const v = shots[`${ti}-${pi}`];
       return n + (v === "M" || v === undefined ? 0 : v);
     }, 0);
   const teamMutter = (ti: 0 | 1) =>
-    ([0, 1] as const).reduce((n, pi) => n + (shots[`${ti}-${pi}`] === "M" ? 1 : 0), 0);
+    ([0, 1] as const).reduce<number>((n, pi) => n + (shots[`${ti}-${pi}`] === "M" ? 1 : 0), 0);
 
   const tA = teamSum(0), tB = teamSum(1);
   const mA = teamMutter(0), mB = teamMutter(1);
