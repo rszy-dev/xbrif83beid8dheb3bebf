@@ -1159,7 +1159,14 @@ function Summary({ state, setState }: { state: State; setState: React.Dispatch<R
         redoFromSummary: false,
       };
 
-      if (checkEnd(next)) next.phase = "winner";
+      if (checkEnd(next)) {
+        next.phase = "winner";
+        // Verlierer ext +1 Bier pro Mitglied (zur Strafe)
+        const loser: 0 | 1 | null =
+          next.teams[0].players[0].bottleSips === 0 && next.teams[0].players[1].bottleSips === 0 ? 0 :
+          next.teams[1].players[0].bottleSips === 0 && next.teams[1].players[1].bottleSips === 0 ? 1 : null;
+        if (loser !== null) next.teams[loser].players.forEach(p => { p.emptied += 1; });
+      }
       return next;
     });
     if (mutterEffective !== null) sfx.mutter(); else sfx.confirm();
