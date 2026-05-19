@@ -1313,15 +1313,9 @@ function Winner({ state, setState }: { state: State; setState: React.Dispatch<Re
   const winnerTeam: 0 | 1 | null = loserTeam === null ? null : (loserTeam ^ 1) as 0 | 1;
 
   // Verlierer ext +1 Bier pro Mitglied (das letzte aktuelle Getränk)
-  const finalized = useMemo(() => {
-    if (loserTeam === null) return state;
-    const teams = snapshotTeams(state.teams);
-    teams[loserTeam].players.forEach(p => { p.emptied += 1; });
-    return { ...state, teams };
-  }, [loserTeam, state]);
-
-  const beer = beerCounts(finalized);
-  const { mvps, ankers } = computeMvpAnker(finalized);
+  const beer = beerCounts(state);
+  const { mvps, ankers } = computeMvpAnker(state);
+  const finalized = state;
 
   const back = () => { sfx.back(); setState(s => ({ ...s, phase: "summary" })); };
 
