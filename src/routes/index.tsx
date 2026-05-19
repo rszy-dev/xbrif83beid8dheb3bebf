@@ -365,9 +365,10 @@ function ScoreHeader({ state }: { state: State }) {
           <div className="mt-1 grid grid-cols-2 gap-1 text-[11px] text-muted-foreground">
             {([0, 1] as const).map(pi => {
               const p = state.teams[ti].players[pi];
+              const total = p.emptied + 1; // aktuell offene Flasche zählt mit
               return (
                 <div key={pi} className="truncate">
-                  {p.name || defaultName({ team: ti, player: pi })}: {p.emptied}/{Math.max(1, p.emptied + (p.bottleSips < p.bottleSize ? 1 : 1))} Bier
+                  {p.name || defaultName({ team: ti, player: pi })}: {p.emptied}/{total} {total === 1 ? "Bier" : "Biere"}
                 </div>
               );
             })}
